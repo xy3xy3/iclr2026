@@ -73,6 +73,10 @@ uv run python ./scripts/init_db.py
 - `EMBED_CONCURRENCY`（默认 1）：并发请求批次数（建议 2~4，视限速而定）
 - `EMBED_MAX_RETRIES`、`EMBED_BACKOFF_BASE`：失败重试与退避
 - `EMBED_TASK_DELAY_MS`：并发任务启动之间的延迟（毫秒）
+- `EMBED_LOG_FILE`：日志文件路径（默认 `data/embed.log`），会写入进度、速率与 ETA
+- `EMBED_LOG_APPEND`：是否追加写入（默认 1）
+
+脚本会在每个批次完成时打印：`Embed progress: 已完成/总数 (百分比%) | rate: 每秒条数 | ETA: 预计剩余时间`
 
 5) 启动 API + Gradio（会读取 .env）
 

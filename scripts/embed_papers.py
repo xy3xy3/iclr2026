@@ -3,7 +3,8 @@ import os
 import socket
 import asyncio
 import random
-from typing import Dict, List, Set, Tuple
+import time
+from typing import Dict, List, Set, Tuple, Optional
 
 import psycopg
 from pgvector.psycopg import register_vector
@@ -25,6 +26,8 @@ EMBED_CONCURRENCY = int(os.getenv("EMBED_CONCURRENCY", "1"))
 EMBED_MAX_RETRIES = int(os.getenv("EMBED_MAX_RETRIES", "5"))
 EMBED_BACKOFF_BASE = float(os.getenv("EMBED_BACKOFF_BASE", "1.5"))
 EMBED_TASK_DELAY_MS = int(os.getenv("EMBED_TASK_DELAY_MS", "0"))  # delay between starting tasks
+EMBED_LOG_FILE = os.getenv("EMBED_LOG_FILE", "")
+EMBED_LOG_APPEND = os.getenv("EMBED_LOG_APPEND", "1").lower() in ("1", "true", "yes", "y")
 
 
 def dsn_from_env() -> str:
@@ -123,8 +126,31 @@ def main() -> None:
     with open(DATA_PATH, "r", encoding="utf-8") as f:
         records: List[Dict[str, str]] = json.load(f)
 
-    dsn = dsn_from_env()
     client = make_client()
+
+    # optional log file
+    log_fp: Optional[object] = None
+    def log(msg: str) -> None:
+        print(msg, flush=True)
+        if log_fp is not None:
+            try:
+                log_fp.write(msg + "\n")  # type: ignore[attr-defined]
+                log_fp.flush()  # type: ignore[attr-defined]
+            except Exception:
+                pass
+
+    if EMBED_LOG_FILE:
+        try:
+            d = os.path.dirname(EMBED_LOG_FILE)
+            if d:
+                os.makedirs(d, exist_ok=True)
+            mode = "a" if EMBED_LOG_APPEND else "w"
+            log_fp = open(EMBED_LOG_FILE, mode, encoding="utf-8")
+            log(f"[log] writing progress to {EMBED_LOG_FILE} (append={EMBED_LOG_APPEND})")
+        except Exception as e:
+            print(f"Warn: cannot open EMBED_LOG_FILE '{EMBED_LOG_FILE}': {e}")
+
+    started_at = time.perf_counter()
 
     with connect_with_fallback() as conn:
         ensure_schema(conn)
@@ -174,11 +200,11 @@ def main() -> None:
 
             total = len(to_embed)
             if total == 0:
-                print("No records need embedding.", flush=True)
-                print("Embedding upsert complete.")
+                log("No records need embedding.")
+                log("Embedding upsert complete.")
                 return
 
-            print(f"Embedding required for {total} records.", flush=True)
+            log(f"Embedding required for {total} records.")
 
             # 2) Embed and update only the necessary rows
             def chunks(lst, n):
@@ -197,7 +223,13 @@ def main() -> None:
                         cur.execute("UPDATE papers SET embedding = %s WHERE link = %s", (e, r["link"]))
                     done += len(group)
                     pct = (done * 100.0) / max(1, total)
-                    print(f"Embed progress: {done}/{total} ({pct:.1f}%)", flush=True)
+                    elapsed = time.perf_counter() - started_at
+                    rate = (done / elapsed) if elapsed > 0 else 0.0
+                    remaining = max(0, total - done)
+                    eta = (remaining / rate) if rate > 0 else 0.0
+                    eta_m = int(eta // 60)
+                    eta_s = int(eta % 60)
+                    log(f"Embed progress: {done}/{total} ({pct:.1f}%) | rate: {rate:.2f}/s | ETA: {eta_m:02d}:{eta_s:02d}")
             else:
                 # Concurrent async path
                 async_client = make_async_client()
@@ -233,11 +265,21 @@ def main() -> None:
                             cur.execute("UPDATE papers SET embedding = %s WHERE link = %s", (e, r["link"]))
                         done += len(g)
                         pct = (done * 100.0) / max(1, total)
-                        print(f"Embed progress: {done}/{total} ({pct:.1f}%)", flush=True)
+                        elapsed = time.perf_counter() - started_at
+                        rate = (done / elapsed) if elapsed > 0 else 0.0
+                        remaining = max(0, total - done)
+                        eta = (remaining / rate) if rate > 0 else 0.0
+                        eta_m = int(eta // 60)
+                        eta_s = int(eta % 60)
+                        log(f"Embed progress: {done}/{total} ({pct:.1f}%) | rate: {rate:.2f}/s | ETA: {eta_m:02d}:{eta_s:02d}")
 
                 asyncio.run(run_all())
-
-    print("Embedding upsert complete.")
+    log("Embedding upsert complete.")
+    if log_fp is not None:
+        try:
+            log_fp.close()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
