@@ -8,8 +8,8 @@ import gradio as gr
 import psycopg
 from pgvector.psycopg import register_vector
 
-from .config import EMBED_DIM, EMBED_MODEL, OPENAI_API_KEY, OPENAI_BASE_URL, dsn_from_env
-from .db import ensure_schema
+from .config import EMBED_DIM, EMBED_MODEL, OPENAI_API_KEY, OPENAI_BASE_URL
+from .db import ensure_schema, get_conn
 
 
 def make_openai_client() -> OpenAI:
@@ -34,8 +34,7 @@ def search_papers(query: str, limit: int = 10) -> List[Dict[str, Any]]:
     client = make_openai_client()
     emb = embed_text(client, query)
 
-    dsn = dsn_from_env()
-    with psycopg.connect(dsn) as conn:
+    with get_conn() as conn:
         register_vector(conn)
         with conn.cursor() as cur:
             cur.execute(

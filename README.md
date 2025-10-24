@@ -33,6 +33,23 @@ pip install -r requirements.txt
 # 本地连接串：postgres://iclr:iclrpass@127.0.0.1:5433/iclr2026
 ```
 
+加入 `pgvector` 到本机 hosts（推荐，便于与远程配置一致）：
+
+- Linux / macOS：
+
+  ```bash
+  # 若不存在则添加一行，需管理员权限
+  grep -q "\bpgvector\b" /etc/hosts || echo "127.0.0.1 pgvector" | sudo tee -a /etc/hosts
+  # 验证
+  getent hosts pgvector 2>/dev/null || host pgvector || ping -c 1 pgvector
+  ```
+
+- Windows：以管理员身份编辑文件 `C:\\Windows\\System32\\drivers\\etc\\hosts`，加入一行：
+
+  ```
+  127.0.0.1 pgvector
+  ```
+
 2) 抓取 OpenReview 数据（得到 data/iclr2026.json）
 
 ```bash
