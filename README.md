@@ -96,6 +96,8 @@ uv run python ./scripts/init_db.py
   # 首次会构建 uv 镜像，然后在容器内提供 uv 工具
   # 进入 uv 容器：
   docker compose -f compose.remote.yml exec uvapp bash
+  # 或者（老版本 Docker）：
+  docker-compose -f compose.remote.yml exec uvapp bash
   # 容器内执行（示例）：
   uv sync && uv run python ./scripts/fetch_openreview_iclr2026.py
   ```
@@ -105,3 +107,6 @@ uv run python ./scripts/init_db.py
 - 镜像使用华为云镜像仓库（中国区），请确保服务器能正常拉取。
 - 本地 `compose.local.yml` 只启动数据库，端口映射为 `5433:5432`，避免与本机已有 Postgres 冲突。
 - 远程 `compose.remote.yml` 默认映射 `5432:5432`，并为将来可能的 Web 开发预留了 `8000` 端口。
+
+提示：如果你的系统提示 `docker: unknown command: docker compose`，请安装 Compose v2 插件或使用旧命令 `docker-compose`。
+我们的启动脚本会自动检测两者并优先使用 v2。
