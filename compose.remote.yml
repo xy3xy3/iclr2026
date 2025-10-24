@@ -9,8 +9,8 @@ services:
       POSTGRES_DB: iclr2026
       POSTGRES_USER: iclr
       POSTGRES_PASSWORD: iclrpass
-    ports:
-      - "5432:5432"
+    # ports:
+    #   - "5432:5432"
     volumes:
       - pg_data_remote:/var/lib/postgresql/data
     healthcheck:

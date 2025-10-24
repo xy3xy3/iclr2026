@@ -129,7 +129,7 @@ cp .env.example .env
 
 ```bash
 ./scripts/remote_up.sh
-# 暴露端口：DB 5432，Web 8000
+# 暴露端口：Web 8000
 ```
 
 3) 访问服务
