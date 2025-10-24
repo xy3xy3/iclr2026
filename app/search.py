@@ -156,54 +156,59 @@ def search_papers_vector_multi(queries: List[str], limit: int = 10) -> List[Dict
 def search_papers_keyword_multi(
     queries: List[str], limit: int = 10, fts_config: str = "english"
 ) -> List[Dict[str, Any]]:
-    """Keyword/FTS search for multiple queries. Returns grouped results per query.
+    """多查询关键词检索（合并 OR，扁平列表）。
 
-    For clarity and per-query limits, executes per-query rather than a single OR.
+    - 将多个查询使用 tsquery OR（`||`）组合成一个查询。
+    - 返回一个扁平列表，长度上限为 len(queries) * limit。
+    - 分数使用 ts_rank_cd，按分数降序排列。
     """
     if not queries:
         return []
-    out: List[Dict[str, Any]] = []
+    # 构造合并 tsquery 片段：websearch_to_tsquery(...) || websearch_to_tsquery(...)
+    tsq_parts = " || ".join(
+        [f"websearch_to_tsquery('{fts_config}', %s)" for _ in queries]
+    )
+    merged_limit = max(1, int(limit)) * len(queries)
+    sql = f"""
+        SELECT
+            id,
+            title,
+            abstract,
+            link,
+            ts_rank_cd(
+                to_tsvector('{fts_config}', coalesce(title,'') || ' ' || coalesce(abstract,'')),
+                {tsq_parts}
+            ) AS score
+        FROM papers
+        WHERE to_tsvector('{fts_config}', coalesce(title,'') || ' ' || coalesce(abstract,''))
+              @@ ({tsq_parts})
+        ORDER BY score DESC
+        LIMIT %s
+    """
+    params: List[Any] = list(queries) + list(queries) + [merged_limit]
     with get_conn() as conn:
         with conn.cursor() as cur:
-            sql = f"""
-                SELECT
-                    id,
-                    title,
-                    abstract,
-                    link,
-                    ts_rank_cd(
-                        to_tsvector('{fts_config}', coalesce(title,'') || ' ' || coalesce(abstract,'')),
-                        websearch_to_tsquery('{fts_config}', %s)
-                    ) AS score
-                FROM papers
-                WHERE to_tsvector('{fts_config}', coalesce(title,'') || ' ' || coalesce(abstract,''))
-                      @@ websearch_to_tsquery('{fts_config}', %s)
-                ORDER BY score DESC
-                LIMIT %s
-            """
-            for q in queries:
-                cur.execute(sql, (q, q, limit))
-                rows = cur.fetchall()
-                results = [
-                    {
-                        "id": r[0],
-                        "title": r[1],
-                        "abstract": r[2],
-                        "link": r[3],
-                        "score": float(r[4]) if r[4] is not None else 0.0,
-                    }
-                    for r in rows
-                ]
-                out.append({"query": q, "results": results})
-    return out
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+    return [
+        {
+            "id": r[0],
+            "title": r[1],
+            "abstract": r[2],
+            "link": r[3],
+            "score": float(r[4]) if r[4] is not None else 0.0,
+        }
+        for r in rows
+    ]
 
 
 def search_papers_multi(queries: List[str], limit: int = 10, mode: str = "vector") -> List[Dict[str, Any]]:
-    """Multi-query search helper.
+    """多查询检索工具。
 
-    Returns a list of {"query": str, "results": [...]}, preserving input order.
+    - 向量模式（vector）：按查询分组返回 [{"query": str, "results": [...] }]。
+    - 关键词模式（keyword/fts）：合并 OR，返回扁平列表（长度为 n_queries × limit）。
     """
-    # Normalize queries: strip and drop empties
+    # 归一化查询：去空白、丢弃空值
     qnorm = [q.strip() for q in (queries or []) if isinstance(q, str) and q.strip()]
     if not qnorm:
         return []

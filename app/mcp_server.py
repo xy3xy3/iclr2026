@@ -11,7 +11,7 @@ if str(ROOT) not in sys.path:
 
 # Reuse existing app logic and configuration
 from app.db import ensure_schema, get_conn
-from app.search import search_papers, search_papers_multi
+from app.search import search_papers_multi
 
 
 mcp = FastMCP("ICLR2026 Vector Search 🧠")
@@ -32,7 +32,9 @@ def paper_search(
         mode: "vector" (embedding similarity) or "keyword" (full-text search).
 
     Returns:
-        A list of groups, each item: {"query": str, "results": [ {id, title, abstract, link, score} ]}
+        - vector 模式：返回列表，元素为 {"query": str, "results": [ {id, title, abstract, link, score} ]}
+        - keyword 模式：返回扁平列表 [ {id, title, abstract, link, score} ]，
+          其中总条数为 len(queries) × limit（合并 OR 检索）
     """
     ensure_schema()
     if not isinstance(queries, list) or len(queries) == 0:
