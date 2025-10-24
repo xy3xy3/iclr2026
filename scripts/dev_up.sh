@@ -18,6 +18,8 @@ compose() {
   fi
 }
 
+echo "[dev] Stopping any existing local pgvector..."
+compose -f compose.local.yml down || true
 echo "[dev] Starting local pgvector (port 5433)..."
 compose -f compose.local.yml up -d
 echo "[dev] Services:"

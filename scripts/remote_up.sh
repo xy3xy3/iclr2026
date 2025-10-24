@@ -17,7 +17,8 @@ compose() {
     exit 1
   fi
 }
-
+echo "[remote] Stopping any existing remote pgvector+uvapp..."
+compose -f compose.remote.yml down || true
 echo "[remote] Building uv image and starting pgvector+uvapp..."
 compose -f compose.remote.yml up -d --build
 echo "[remote] Services:"
