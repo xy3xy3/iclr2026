@@ -87,7 +87,7 @@ def connect_with_fallback() -> psycopg.Connection:
     primary = dsn_from_env()
     print(f"[embed] Connecting to PostgreSQL: {_mask_dsn(primary)}", flush=True)
     try:
-        return psycopg.connect(primary, autocommit=True)
+        return psycopg.connect(primary, autocommit=True, connect_timeout=10)
     except psycopg.OperationalError as e:
         host = os.getenv("POSTGRES_HOST", "")
         port = os.getenv("POSTGRES_PORT", "")
@@ -107,7 +107,7 @@ def connect_with_fallback() -> psycopg.Connection:
         if should_fallback:
             fallback = f"postgresql://{user}:{pw}@127.0.0.1:5432/{db}"
             print(f"Warn: falling back to local DB {_mask_dsn(fallback)}", flush=True)
-            return psycopg.connect(fallback, autocommit=True)
+            return psycopg.connect(fallback, autocommit=True, connect_timeout=10)
         raise
 
 

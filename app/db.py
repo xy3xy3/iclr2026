@@ -71,7 +71,7 @@ def get_conn() -> psycopg.Connection:
     except Exception:
         pass
     try:
-        return psycopg.connect(dsn, autocommit=True)
+        return psycopg.connect(dsn, autocommit=True, connect_timeout=10)
     except psycopg.OperationalError:
         host = os.getenv("POSTGRES_HOST", "")
         port = os.getenv("POSTGRES_PORT", "")
@@ -96,7 +96,7 @@ def get_conn() -> psycopg.Connection:
                 print(f"[db] Falling back to local DB {masked_fb}", flush=True)
             except Exception:
                 pass
-            return psycopg.connect(fallback, autocommit=True)
+            return psycopg.connect(fallback, autocommit=True, connect_timeout=10)
         raise
 
 

@@ -48,7 +48,7 @@ def connect_with_fallback() -> psycopg.Connection:
     primary = dsn_from_env()
     print(f"[db:init] Connecting to PostgreSQL: {_mask_dsn(primary)}")
     try:
-        return psycopg.connect(primary, autocommit=True)
+        return psycopg.connect(primary, autocommit=True, connect_timeout=10)
     except psycopg.OperationalError:
         host = os.getenv("POSTGRES_HOST")
         if host and not _is_resolvable(host):
@@ -57,7 +57,7 @@ def connect_with_fallback() -> psycopg.Connection:
             pw = os.getenv("POSTGRES_PASSWORD", "iclrpass")
             fallback = f"postgresql://{user}:{pw}@127.0.0.1:5432/{db}"
             print(f"Warn: host '{host}' not resolvable, trying local fallback {_mask_dsn(fallback)}")
-            return psycopg.connect(fallback, autocommit=True)
+            return psycopg.connect(fallback, autocommit=True, connect_timeout=10)
         raise
 
 
