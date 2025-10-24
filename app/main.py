@@ -1,81 +1,29 @@
-from typing import Any, Dict, List, Optional
-from functools import lru_cache
+from typing import Any, Dict, List
 
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Query
-from openai import OpenAI
-import os
-
 import gradio as gr
-import psycopg
-from pgvector.psycopg import register_vector, Vector
 
-from .config import EMBED_DIM, EMBED_MODEL, OPENAI_API_KEY, OPENAI_BASE_URL
-from .db import ensure_schema, get_conn
-
-
-def make_openai_client() -> OpenAI:
-    if not OPENAI_API_KEY:
-        raise RuntimeError("OPENAI_API_KEY is not set")
-    if OPENAI_BASE_URL:
-        return OpenAI(api_key=OPENAI_API_KEY, base_url=OPENAI_BASE_URL)
-    return OpenAI(api_key=OPENAI_API_KEY)
+from .db import ensure_schema
+from .search import search_papers
+from .mcp_server import mcp
 
 
-def embed_text(client: OpenAI, text: str) -> List[float]:
-    text = text.replace("\n", " ")
-    resp = client.embeddings.create(model=EMBED_MODEL, input=[text])
-    return resp.data[0].embedding  # type: ignore
+# Create MCP ASGI app and combine lifespans so both our app init and MCP session
+# manager run correctly in a single Uvicorn process.
+mcp_app = mcp.http_app(path="/")
 
 
-def combined_text(title: str, abstract: str) -> str:
-    return f"Title: {title}\n\nAbstract: {abstract}"
-
-
-def search_papers(query: str, limit: int = 10) -> List[Dict[str, Any]]:
-    emb = embed_query_cached(query, EMBED_MODEL)
-
-    with get_conn() as conn:
-        register_vector(conn)
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT id, title, abstract, link, (1 - (embedding <=> %s)) as score
-                FROM papers
-                WHERE embedding IS NOT NULL
-                ORDER BY embedding <=> %s
-                LIMIT %s
-                """,
-                (Vector(emb), Vector(emb), limit),
-            )
-            rows = cur.fetchall()
-    results = [
-        {
-            "id": r[0],
-            "title": r[1],
-            "abstract": r[2],
-            "link": r[3],
-            "score": float(r[4]),
-        }
-        for r in rows
-    ]
-    return results
-
-
-@lru_cache(maxsize=512)
-def embed_query_cached(text: str, model: str = EMBED_MODEL) -> List[float]:
-    client = make_openai_client()
-    t = text.replace("\n", " ")
-    resp = client.embeddings.create(model=model, input=[t])
-    return resp.data[0].embedding  # type: ignore
-
-
-app = FastAPI(title="ICLR2026 Paper Search")
-
-
-@app.on_event("startup")
-def _on_startup() -> None:
-    # Ensure schema exists at boot
+@asynccontextmanager
+async def combined_lifespan(fastapi_app: FastAPI):
+    # App startup (e.g., ensure DB schema)
     ensure_schema()
+    # Run MCP lifespan nested so its resources/session manager initialize too
+    async with mcp_app.lifespan(fastapi_app):
+        yield
+
+
+app = FastAPI(title="ICLR2026 Paper Search", lifespan=combined_lifespan)
 
 
 @app.get("/health")
@@ -163,3 +111,6 @@ except Exception:
 
 
 _mount(app, demo, path="/gradio")
+
+# Mount MCP routes under the same FastAPI app at /mcp
+app.mount("/mcp", mcp_app)
