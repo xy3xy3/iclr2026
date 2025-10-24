@@ -1,5 +1,7 @@
 from contextlib import contextmanager
 from typing import Iterator
+import os
+import socket
 
 import psycopg
 from pgvector.psycopg import register_vector
@@ -7,10 +9,30 @@ from pgvector.psycopg import register_vector
 from .config import dsn_from_env, EMBED_DIM
 
 
+def _is_resolvable(host: str) -> bool:
+    try:
+        socket.getaddrinfo(host, None)
+        return True
+    except Exception:
+        return False
+
+
 def get_conn() -> psycopg.Connection:
     # Note: do not register pgvector here because the extension
     # may not exist yet; call register_vector after ensuring schema.
-    return psycopg.connect(dsn_from_env(), autocommit=True)
+    dsn = dsn_from_env()
+    try:
+        return psycopg.connect(dsn, autocommit=True)
+    except psycopg.OperationalError:
+        host = os.getenv("POSTGRES_HOST")
+        if host and not _is_resolvable(host):
+            db = os.getenv("POSTGRES_DB", "iclr2026")
+            user = os.getenv("POSTGRES_USER", "iclr")
+            pw = os.getenv("POSTGRES_PASSWORD", "iclrpass")
+            fallback = f"postgresql://{user}:{pw}@127.0.0.1:5433/{db}"
+            print(f"Warn: host '{host}' not resolvable, trying local fallback {fallback}")
+            return psycopg.connect(fallback, autocommit=True)
+        raise
 
 
 @contextmanager
