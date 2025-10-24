@@ -39,11 +39,16 @@ services:
       POSTGRES_PASSWORD: iclrpass
       POSTGRES_HOST: pgvector
       POSTGRES_PORT: "5432"
+      # OpenAI config (passed through from host if set)
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      OPENAI_EMBED_MODEL: ${OPENAI_EMBED_MODEL:-}
+      OPENAI_EMBED_DIM: ${OPENAI_EMBED_DIM:-1536}
     depends_on:
       pgvector:
         condition: service_healthy
     # Keep container running and provide uv inside
-    command: ["bash", "-lc", "uv --version && tail -f /dev/null"]
+    command: ["bash", "-lc", "./scripts/serve_app.sh"]
     ports:
       - "8000:8000"  # for future FastAPI/Gradio if needed
     networks:

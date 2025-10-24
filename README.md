@@ -32,6 +32,33 @@ uv run ./scripts/fetch_openreview_iclr2026.py
 python3 ./scripts/fetch_openreview_iclr2026.py
 ```
 
+## 语义搜索（FastAPI + Gradio + pgvector）
+
+1) 初始化数据库结构（含 pgvector 扩展与索引）
+
+```bash
+uv run python ./scripts/init_db.py
+```
+
+2) 生成并写入 Embedding（使用 OpenAI 兼容接口）
+
+要求环境变量：`OPENAI_API_KEY`（可选：`OPENAI_BASE_URL`、`OPENAI_EMBED_MODEL`）。
+
+```bash
+export OPENAI_API_KEY=sk-...           # 或者设置 OPENAI_BASE_URL 指向兼容服务
+uv run python ./scripts/embed_papers.py
+```
+
+3) 启动服务（FastAPI + Gradio）
+
+```bash
+./scripts/serve_app.sh
+# 访问 http://127.0.0.1:8000/gradio 进行检索
+```
+
+说明：表结构包含三列字段（title、abstract、link）与 `embedding VECTOR(1536)`，
+检索时以余弦相似度（`<=>`）排序。
+
 ## Docker Compose 部署
 
 - 仅本机数据库（pgvector），使用本机 `uv` 开发：
