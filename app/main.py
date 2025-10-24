@@ -67,7 +67,8 @@ def on_table_select(evt: gr.SelectData, rows: List[List[Any]]):
     except Exception:
         link = ""
 
-    return gr.update(value=link), gr.update(link=link)
+    # Only update the textbox value; opening is handled by the button's JS
+    return gr.update(value=link)
 
 
 with gr.Blocks(title="ICLR2026 Paper Search") as demo:
@@ -99,7 +100,7 @@ with gr.Blocks(title="ICLR2026 Paper Search") as demo:
         fn=None,
         inputs=link_box,
         outputs=None,
-        _js="(link) => { if (link) window.open(link, '_blank', 'noopener'); }",
+        js="(link) => { if (link) window.open(link, '_blank', 'noopener'); }",
     )
 
 
