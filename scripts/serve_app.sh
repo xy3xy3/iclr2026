@@ -17,11 +17,11 @@ export PYTHONUNBUFFERED=1
 
 # Wait for DB to be reachable to avoid startup race
 DB_HOST=${POSTGRES_HOST:-127.0.0.1}
-DB_PORT=${POSTGRES_PORT:-5433}
+DB_PORT=${POSTGRES_PORT:-5432}
 if [ "$DB_HOST" = "pgvector" ]; then
   # local fallback when not in compose network
   DB_HOST=127.0.0.1
-  DB_PORT=5433
+  DB_PORT=5432
 fi
 
 echo "[serve] Waiting for DB at $DB_HOST:$DB_PORT ..."

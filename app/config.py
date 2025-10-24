@@ -9,11 +9,11 @@ def env(key: str, default: Optional[str] = None) -> Optional[str]:
 
 DATABASE_URL = env(
     "DATABASE_URL",
-    "postgresql://iclr:iclrpass@127.0.0.1:5433/iclr2026",
+    "postgresql://iclr:iclrpass@127.0.0.1:5432/iclr2026",
 )
 
 POSTGRES_HOST = env("POSTGRES_HOST", "127.0.0.1")
-POSTGRES_PORT = int(env("POSTGRES_PORT", "5433"))
+POSTGRES_PORT = int(env("POSTGRES_PORT", "5432"))
 POSTGRES_DB = env("POSTGRES_DB", "iclr2026")
 POSTGRES_USER = env("POSTGRES_USER", "iclr")
 POSTGRES_PASSWORD = env("POSTGRES_PASSWORD", "iclrpass")

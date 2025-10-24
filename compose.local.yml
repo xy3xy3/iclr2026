@@ -10,7 +10,7 @@ services:
       POSTGRES_USER: iclr
       POSTGRES_PASSWORD: iclrpass
     ports:
-      - "5433:5432"  # host:container
+      - "5432:5432"  # host:container
     volumes:
       - pg_data_local:/var/lib/postgresql/data
     healthcheck:

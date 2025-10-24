@@ -30,7 +30,7 @@ pip install -r requirements.txt
 
 ```bash
 ./scripts/dev_up.sh
-# 本地连接串：postgres://iclr:iclrpass@127.0.0.1:5433/iclr2026
+# 本地连接串：postgres://iclr:iclrpass@127.0.0.1:5432/iclr2026
 ```
 
 加入 `pgvector` 到本机 hosts（推荐，便于与远程配置一致）：
@@ -143,7 +143,7 @@ http://<服务器IP或域名>:8000/gradio
 ```
 
 说明：
-- 本地 `compose.local.yml` 仅启动数据库，端口映射 `5433:5432`，避免与本机 Postgres 冲突。
+- 本地 `compose.local.yml` 仅启动数据库，端口映射 `5432:5432`，避免与本机 Postgres 冲突。
 - 远程 `compose.remote.yml` 同时启动数据库与应用，并映射 `5432`（DB）与 `8000`（Web）。
  - 远程应用容器启动时会执行 `scripts/bootstrap.sh`：
    - `init_db.py`：幂等创建扩展/表/索引

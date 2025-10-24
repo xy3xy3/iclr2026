@@ -9,7 +9,7 @@ def dsn_from_env() -> str:
     if url:
         return url
     host = os.getenv("POSTGRES_HOST", "127.0.0.1")
-    port = int(os.getenv("POSTGRES_PORT", "5433"))
+    port = int(os.getenv("POSTGRES_PORT", "5432"))
     db = os.getenv("POSTGRES_DB", "iclr2026")
     user = os.getenv("POSTGRES_USER", "iclr")
     pw = os.getenv("POSTGRES_PASSWORD", "iclrpass")
@@ -34,7 +34,7 @@ def connect_with_fallback() -> psycopg.Connection:
             db = os.getenv("POSTGRES_DB", "iclr2026")
             user = os.getenv("POSTGRES_USER", "iclr")
             pw = os.getenv("POSTGRES_PASSWORD", "iclrpass")
-            fallback = f"postgresql://{user}:{pw}@127.0.0.1:5433/{db}"
+            fallback = f"postgresql://{user}:{pw}@127.0.0.1:5432/{db}"
             print(f"Warn: host '{host}' not resolvable, trying local fallback {fallback}")
             return psycopg.connect(fallback, autocommit=True)
         raise

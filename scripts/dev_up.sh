@@ -20,9 +20,9 @@ compose() {
 
 echo "[dev] Stopping any existing local pgvector..."
 compose -f compose.local.yml down || true
-echo "[dev] Starting local pgvector (port 5433)..."
+echo "[dev] Starting local pgvector (port 5432)..."
 compose -f compose.local.yml up -d
 echo "[dev] Services:"
 compose -f compose.local.yml ps
 
-echo "[dev] Connection string: postgres://iclr:iclrpass@127.0.0.1:5433/iclr2026"
+echo "[dev] Connection string: postgres://iclr:iclrpass@127.0.0.1:5432/iclr2026"
