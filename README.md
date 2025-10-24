@@ -22,91 +22,102 @@ uv pip freeze > requirements.txt
 pip install -r requirements.txt
 ```
 
-## 抓取脚本
+## 本地开发（推荐）
+
+前提：本地先启动 pgvector（Docker Compose），再执行向量化脚本和启动服务。
+
+1) 启动本地数据库（pgvector）
+
+```bash
+./scripts/dev_up.sh
+# 本地连接串：postgres://iclr:iclrpass@127.0.0.1:5433/iclr2026
+```
+
+2) 抓取 OpenReview 数据（得到 data/iclr2026.json）
 
 ```bash
 uv run ./scripts/fetch_openreview_iclr2026.py
 ```
 
-```bash
-python3 ./scripts/fetch_openreview_iclr2026.py
-```
-
-## 语义搜索（FastAPI + Gradio + pgvector）
-
-1) 初始化数据库结构（含 pgvector 扩展与索引）
+3) 初始化数据库结构（pgvector 扩展、表、索引）
 
 ```bash
 uv run python ./scripts/init_db.py
 ```
 
-2) 生成并写入 Embedding（使用 OpenAI 兼容接口）
+4) 配置并写入 Embedding（必须先启动数据库）
 
 环境变量（支持同时配置 baseurl 和 apikey）：
-
 - `OPENAI_API_KEY`（必需）
-- `OPENAI_BASE_URL`（可选，使用代理/兼容服务时设置，如 `https://api.openai.com/v1`）
+- `OPENAI_BASE_URL`（可选，如 `https://api.openai.com/v1`）
 - `OPENAI_EMBED_MODEL`（默认 `text-embedding-3-small`）
-- `OPENAI_EMBED_DIM`（默认 `1536`，需与模型维度一致）
+- `OPENAI_EMBED_DIM`（默认 `1536`）
 
 两种方式：
-
-- 临时导出环境变量：
+- 临时导出：
 
   ```bash
-  export OPENAI_API_KEY=sk-...           # 可选：export OPENAI_BASE_URL=https://api.openai.com/v1
+  export OPENAI_API_KEY=sk-...  # 可选：export OPENAI_BASE_URL=https://api.openai.com/v1
   uv run python ./scripts/embed_papers.py
   ```
 
-- 使用 `.env` 自动注入（推荐）：
+- 使用 `.env`（推荐）：
 
   ```bash
   cp .env.example .env  # 填写 OPENAI_API_KEY/OPENAI_BASE_URL/模型配置
   ./scripts/with_env.sh uv run python ./scripts/embed_papers.py
   ```
 
-3) 启动服务（FastAPI + Gradio）
+5) 启动 API + Gradio（会读取 .env）
 
 ```bash
-./scripts/serve_app.sh  # 会自动读取项目根目录下的 .env
+./scripts/serve_app.sh
 # 访问 http://127.0.0.1:8000/gradio 进行检索
 ```
 
-说明：表结构包含三列字段（title、abstract、link）与 `embedding VECTOR(1536)`，
-检索时以余弦相似度（`<=>`）排序。
+说明：表结构包含（title、abstract、link、embedding VECTOR(N)），按余弦相似度排序。
 
-### 通过 Compose 传递 apikey 和 baseurl
+提示：若提示 `docker: unknown command: docker compose`，请安装 Compose v2 插件或使用 `docker-compose`（启动脚本已自动兼容）。
 
-- 复制 `.env.example` 为 `.env`，填入 `OPENAI_API_KEY` 与可选的 `OPENAI_BASE_URL`、`OPENAI_EMBED_MODEL`、`OPENAI_EMBED_DIM`。
-- Docker Compose 会自动读取项目根目录下的 `.env`，`compose.remote.yml` 中的环境变量会从 `.env` 替换并注入到 `uvapp` 容器。
+## 远程部署（pgvector + uv）
 
-## Docker Compose 部署
+1) 准备环境变量
 
-- 仅本机数据库（pgvector），使用本机 `uv` 开发：
+```bash
+cp .env.example .env
+# 填写 OPENAI_API_KEY（必需），可选：OPENAI_BASE_URL/OPENAI_EMBED_MODEL/OPENAI_EMBED_DIM
+```
+
+2) 构建并启动服务
+
+```bash
+./scripts/remote_up.sh
+# 暴露端口：DB 5432，Web 8000
+```
+
+3) 初始化与向量化（在容器内执行，或在宿主机执行）
+
+- 方式 A（容器内执行，推荐）：
 
   ```bash
-  ./scripts/dev_up.sh
-  # 本地连接串：postgres://iclr:iclrpass@127.0.0.1:5433/iclr2026
+  docker compose -f compose.remote.yml exec uvapp bash   # 或 docker-compose ...
+  uv run python ./scripts/init_db.py
+  uv run python ./scripts/embed_papers.py
   ```
 
-- 远程服务器同时部署 pgvector + uv 容器：
+- 方式 B（宿主机执行，使用 `.env`）：
 
   ```bash
-  ./scripts/remote_up.sh
-  # 首次会构建 uv 镜像，然后在容器内提供 uv 工具
-  # 进入 uv 容器：
-  docker compose -f compose.remote.yml exec uvapp bash
-  # 或者（老版本 Docker）：
-  docker-compose -f compose.remote.yml exec uvapp bash
-  # 容器内执行（示例）：
-  uv sync && uv run python ./scripts/fetch_openreview_iclr2026.py
+  ./scripts/with_env.sh uv run python ./scripts/init_db.py
+  ./scripts/with_env.sh uv run python ./scripts/embed_papers.py
   ```
+
+4) 访问服务
+
+```bash
+http://<服务器IP或域名>:8000/gradio
+```
 
 说明：
-
-- 镜像使用华为云镜像仓库（中国区），请确保服务器能正常拉取。
-- 本地 `compose.local.yml` 只启动数据库，端口映射为 `5433:5432`，避免与本机已有 Postgres 冲突。
-- 远程 `compose.remote.yml` 默认映射 `5432:5432`，并为将来可能的 Web 开发预留了 `8000` 端口。
-
-提示：如果你的系统提示 `docker: unknown command: docker compose`，请安装 Compose v2 插件或使用旧命令 `docker-compose`。
-我们的启动脚本会自动检测两者并优先使用 v2。
+- 本地 `compose.local.yml` 仅启动数据库，端口映射 `5433:5432`，避免与本机 Postgres 冲突。
+- 远程 `compose.remote.yml` 同时启动数据库与应用，并映射 `5432`（DB）与 `8000`（Web）。
