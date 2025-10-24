@@ -7,7 +7,7 @@ import time
 from typing import Dict, List, Set, Tuple, Optional
 
 import psycopg
-from pgvector.psycopg import register_vector
+from pgvector.psycopg import register_vector, Vector
 from openai import OpenAI, AsyncOpenAI
 try:
     from openai import APIError, RateLimitError, APIConnectionError
@@ -220,7 +220,7 @@ def main() -> None:
                     texts = [f"Title: {r['title']}\n\nAbstract: {r['abstract']}" for r in group]
                     embs = embed_texts(client, texts)
                     for r, e in zip(group, embs):
-                        cur.execute("UPDATE papers SET embedding = %s WHERE link = %s", (e, r["link"]))
+                        cur.execute("UPDATE papers SET embedding = %s WHERE link = %s", (Vector(e), r["link"]))
                     done += len(group)
                     pct = (done * 100.0) / max(1, total)
                     elapsed = time.perf_counter() - started_at
@@ -262,7 +262,7 @@ def main() -> None:
                     for task in asyncio.as_completed(tasks):
                         g, embs = await task
                         for r, e in zip(g, embs):
-                            cur.execute("UPDATE papers SET embedding = %s WHERE link = %s", (e, r["link"]))
+                            cur.execute("UPDATE papers SET embedding = %s WHERE link = %s", (Vector(e), r["link"]))
                         done += len(g)
                         pct = (done * 100.0) / max(1, total)
                         elapsed = time.perf_counter() - started_at

@@ -1,4 +1,5 @@
 from typing import Any, Dict, List, Optional
+from functools import lru_cache
 
 from fastapi import FastAPI, HTTPException, Query
 from openai import OpenAI
@@ -6,7 +7,7 @@ import os
 
 import gradio as gr
 import psycopg
-from pgvector.psycopg import register_vector
+from pgvector.psycopg import register_vector, Vector
 
 from .config import EMBED_DIM, EMBED_MODEL, OPENAI_API_KEY, OPENAI_BASE_URL
 from .db import ensure_schema, get_conn
@@ -31,8 +32,7 @@ def combined_text(title: str, abstract: str) -> str:
 
 
 def search_papers(query: str, limit: int = 10) -> List[Dict[str, Any]]:
-    client = make_openai_client()
-    emb = embed_text(client, query)
+    emb = embed_query_cached(query, EMBED_MODEL)
 
     with get_conn() as conn:
         register_vector(conn)
@@ -45,7 +45,7 @@ def search_papers(query: str, limit: int = 10) -> List[Dict[str, Any]]:
                 ORDER BY embedding <=> %s
                 LIMIT %s
                 """,
-                (emb, emb, limit),
+                (Vector(emb), Vector(emb), limit),
             )
             rows = cur.fetchall()
     results = [
@@ -59,6 +59,14 @@ def search_papers(query: str, limit: int = 10) -> List[Dict[str, Any]]:
         for r in rows
     ]
     return results
+
+
+@lru_cache(maxsize=512)
+def embed_query_cached(text: str, model: str = EMBED_MODEL) -> List[float]:
+    client = make_openai_client()
+    t = text.replace("\n", " ")
+    resp = client.embeddings.create(model=model, input=[t])
+    return resp.data[0].embedding  # type: ignore
 
 
 app = FastAPI(title="ICLR2026 Paper Search")
