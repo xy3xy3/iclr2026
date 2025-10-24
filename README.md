@@ -42,7 +42,12 @@ uv run python ./scripts/init_db.py
 
 2) 生成并写入 Embedding（使用 OpenAI 兼容接口）
 
-要求环境变量：`OPENAI_API_KEY`（可选：`OPENAI_BASE_URL`、`OPENAI_EMBED_MODEL`）。
+环境变量（支持同时配置 baseurl 和 apikey）：
+
+- `OPENAI_API_KEY`（必需）
+- `OPENAI_BASE_URL`（可选，使用代理/兼容服务时设置，如 `https://api.openai.com/v1`）
+- `OPENAI_EMBED_MODEL`（默认 `text-embedding-3-small`）
+- `OPENAI_EMBED_DIM`（默认 `1536`，需与模型维度一致）
 
 ```bash
 export OPENAI_API_KEY=sk-...           # 或者设置 OPENAI_BASE_URL 指向兼容服务
@@ -58,6 +63,11 @@ uv run python ./scripts/embed_papers.py
 
 说明：表结构包含三列字段（title、abstract、link）与 `embedding VECTOR(1536)`，
 检索时以余弦相似度（`<=>`）排序。
+
+### 通过 Compose 传递 apikey 和 baseurl
+
+- 建议复制 `.env.example` 为 `.env`，填入 `OPENAI_API_KEY` 与可选的 `OPENAI_BASE_URL`、`OPENAI_EMBED_MODEL`、`OPENAI_EMBED_DIM`。
+- `compose.remote.yml` 会将上述变量传入 `uvapp` 容器。
 
 ## Docker Compose 部署
 
