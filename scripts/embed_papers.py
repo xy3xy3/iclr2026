@@ -70,8 +70,9 @@ def main() -> None:
     client = make_client()
 
     with psycopg.connect(dsn, autocommit=True) as conn:
-        register_vector(conn)
         ensure_schema(conn)
+        # register after extension exists
+        register_vector(conn)
         with conn.cursor() as cur:
             # 1) Upsert title/abstract/link; collect which links need embeddings
             #    If EMBED_FORCE=1 -> embed all; else if EMBED_ONLY_MISSING=1 -> embed only missing

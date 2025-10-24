@@ -8,9 +8,9 @@ from .config import dsn_from_env, EMBED_DIM
 
 
 def get_conn() -> psycopg.Connection:
-    conn = psycopg.connect(dsn_from_env(), autocommit=True)
-    register_vector(conn)
-    return conn
+    # Note: do not register pgvector here because the extension
+    # may not exist yet; call register_vector after ensuring schema.
+    return psycopg.connect(dsn_from_env(), autocommit=True)
 
 
 @contextmanager

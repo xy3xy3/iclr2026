@@ -19,7 +19,6 @@ def main() -> None:
     embed_dim = int(os.getenv("OPENAI_EMBED_DIM", "1536"))
     dsn = dsn_from_env()
     with psycopg.connect(dsn, autocommit=True) as conn:
-        register_vector(conn)
         with conn.cursor() as cur:
             cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
             cur.execute(
@@ -47,6 +46,8 @@ def main() -> None:
                 END$$;
                 """
             )
+        # Register type adapters after ensuring extension exists
+        register_vector(conn)
     print("DB schema ensured (extension/table/index)")
 
 
