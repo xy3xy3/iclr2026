@@ -51,20 +51,44 @@ def _is_resolvable(host: str) -> bool:
         return False
 
 
+def _resolves_to_loopback(host: str) -> bool:
+    try:
+        infos = socket.getaddrinfo(host, None)
+        for _, _, _, _, sockaddr in infos:
+            ip = sockaddr[0]
+            if ip.startswith("127.") or ip == "::1":
+                return True
+        return False
+    except Exception:
+        return False
+
+
 def connect_with_fallback() -> psycopg.Connection:
     primary = dsn_from_env()
     try:
         return psycopg.connect(primary, autocommit=True)
     except psycopg.OperationalError as e:
-        host = os.getenv("POSTGRES_HOST")
-        # If host looks like a container name (e.g., 'pgvector') and isn't resolvable on host,
-        # fallback to local compose defaults
+        host = os.getenv("POSTGRES_HOST", "")
+        port = os.getenv("POSTGRES_PORT", "")
+        db = os.getenv("POSTGRES_DB", "iclr2026")
+        user = os.getenv("POSTGRES_USER", "iclr")
+        pw = os.getenv("POSTGRES_PASSWORD", "iclrpass")
+
+        # Fallback rules aligned with app/db.py:
+        # 1) host not resolvable -> 127.0.0.1:5433
+        # 2) host == 'pgvector' -> 127.0.0.1:5433
+        # 3) host resolves to loopback and port != 5433 -> 127.0.0.1:5433
+        should_fallback = False
         if host and not _is_resolvable(host):
-            db = os.getenv("POSTGRES_DB", "iclr2026")
-            user = os.getenv("POSTGRES_USER", "iclr")
-            pw = os.getenv("POSTGRES_PASSWORD", "iclrpass")
+            should_fallback = True
+        if host.lower() == "pgvector":
+            should_fallback = True
+        if _resolves_to_loopback(host or "127.0.0.1") and port not in ("", "5433"):
+            should_fallback = True
+
+        if should_fallback:
             fallback = f"postgresql://{user}:{pw}@127.0.0.1:5433/{db}"
-            print(f"Warn: host '{host}' not resolvable, trying local fallback {fallback}", flush=True)
+            print(f"Warn: falling back to local DB {fallback}", flush=True)
             return psycopg.connect(fallback, autocommit=True)
         raise
 
