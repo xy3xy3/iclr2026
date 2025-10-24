@@ -49,15 +49,26 @@ uv run python ./scripts/init_db.py
 - `OPENAI_EMBED_MODEL`（默认 `text-embedding-3-small`）
 - `OPENAI_EMBED_DIM`（默认 `1536`，需与模型维度一致）
 
-```bash
-export OPENAI_API_KEY=sk-...           # 或者设置 OPENAI_BASE_URL 指向兼容服务
-uv run python ./scripts/embed_papers.py
-```
+两种方式：
+
+- 临时导出环境变量：
+
+  ```bash
+  export OPENAI_API_KEY=sk-...           # 可选：export OPENAI_BASE_URL=https://api.openai.com/v1
+  uv run python ./scripts/embed_papers.py
+  ```
+
+- 使用 `.env` 自动注入（推荐）：
+
+  ```bash
+  cp .env.example .env  # 填写 OPENAI_API_KEY/OPENAI_BASE_URL/模型配置
+  ./scripts/with_env.sh uv run python ./scripts/embed_papers.py
+  ```
 
 3) 启动服务（FastAPI + Gradio）
 
 ```bash
-./scripts/serve_app.sh
+./scripts/serve_app.sh  # 会自动读取项目根目录下的 .env
 # 访问 http://127.0.0.1:8000/gradio 进行检索
 ```
 
@@ -66,8 +77,8 @@ uv run python ./scripts/embed_papers.py
 
 ### 通过 Compose 传递 apikey 和 baseurl
 
-- 建议复制 `.env.example` 为 `.env`，填入 `OPENAI_API_KEY` 与可选的 `OPENAI_BASE_URL`、`OPENAI_EMBED_MODEL`、`OPENAI_EMBED_DIM`。
-- `compose.remote.yml` 会将上述变量传入 `uvapp` 容器。
+- 复制 `.env.example` 为 `.env`，填入 `OPENAI_API_KEY` 与可选的 `OPENAI_BASE_URL`、`OPENAI_EMBED_MODEL`、`OPENAI_EMBED_DIM`。
+- Docker Compose 会自动读取项目根目录下的 `.env`，`compose.remote.yml` 中的环境变量会从 `.env` 替换并注入到 `uvapp` 容器。
 
 ## Docker Compose 部署
 
