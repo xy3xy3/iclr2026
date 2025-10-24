@@ -1,4 +1,5 @@
 import os
+import socket
 import psycopg
 from pgvector.psycopg import register_vector
 
@@ -15,10 +16,33 @@ def dsn_from_env() -> str:
     return f"postgresql://{user}:{pw}@{host}:{port}/{db}"
 
 
+def _is_resolvable(host: str) -> bool:
+    try:
+        socket.getaddrinfo(host, None)
+        return True
+    except Exception:
+        return False
+
+
+def connect_with_fallback() -> psycopg.Connection:
+    primary = dsn_from_env()
+    try:
+        return psycopg.connect(primary, autocommit=True)
+    except psycopg.OperationalError:
+        host = os.getenv("POSTGRES_HOST")
+        if host and not _is_resolvable(host):
+            db = os.getenv("POSTGRES_DB", "iclr2026")
+            user = os.getenv("POSTGRES_USER", "iclr")
+            pw = os.getenv("POSTGRES_PASSWORD", "iclrpass")
+            fallback = f"postgresql://{user}:{pw}@127.0.0.1:5433/{db}"
+            print(f"Warn: host '{host}' not resolvable, trying local fallback {fallback}")
+            return psycopg.connect(fallback, autocommit=True)
+        raise
+
+
 def main() -> None:
     embed_dim = int(os.getenv("OPENAI_EMBED_DIM", "1536"))
-    dsn = dsn_from_env()
-    with psycopg.connect(dsn, autocommit=True) as conn:
+    with connect_with_fallback() as conn:
         with conn.cursor() as cur:
             cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
             cur.execute(

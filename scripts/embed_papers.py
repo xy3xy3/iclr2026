@@ -1,5 +1,6 @@
 import json
 import os
+import socket
 from typing import Dict, List, Set
 
 import psycopg
@@ -23,6 +24,33 @@ def dsn_from_env() -> str:
     user = os.getenv("POSTGRES_USER", "iclr")
     pw = os.getenv("POSTGRES_PASSWORD", "iclrpass")
     return f"postgresql://{user}:{pw}@{host}:{port}/{db}"
+
+
+def _is_resolvable(host: str) -> bool:
+    try:
+        # Try to resolve DNS / host
+        socket.getaddrinfo(host, None)
+        return True
+    except Exception:
+        return False
+
+
+def connect_with_fallback() -> psycopg.Connection:
+    primary = dsn_from_env()
+    try:
+        return psycopg.connect(primary, autocommit=True)
+    except psycopg.OperationalError as e:
+        host = os.getenv("POSTGRES_HOST")
+        # If host looks like a container name (e.g., 'pgvector') and isn't resolvable on host,
+        # fallback to local compose defaults
+        if host and not _is_resolvable(host):
+            db = os.getenv("POSTGRES_DB", "iclr2026")
+            user = os.getenv("POSTGRES_USER", "iclr")
+            pw = os.getenv("POSTGRES_PASSWORD", "iclrpass")
+            fallback = f"postgresql://{user}:{pw}@127.0.0.1:5433/{db}"
+            print(f"Warn: host '{host}' not resolvable, trying local fallback {fallback}", flush=True)
+            return psycopg.connect(fallback, autocommit=True)
+        raise
 
 
 def make_client() -> OpenAI:
@@ -69,7 +97,7 @@ def main() -> None:
     dsn = dsn_from_env()
     client = make_client()
 
-    with psycopg.connect(dsn, autocommit=True) as conn:
+    with connect_with_fallback() as conn:
         ensure_schema(conn)
         # register after extension exists
         register_vector(conn)
@@ -115,11 +143,20 @@ def main() -> None:
                 if need:
                     to_embed.append({"title": title, "abstract": abstract, "link": link})
 
+            total = len(to_embed)
+            if total == 0:
+                print("No records need embedding.", flush=True)
+                print("Embedding upsert complete.")
+                return
+
+            print(f"Embedding required for {total} records.", flush=True)
+
             # 2) Embed and update only the necessary rows
             def chunks(lst, n):
                 for i in range(0, len(lst), n):
                     yield lst[i : i + n]
 
+            done = 0
             for group in chunks(to_embed, BATCH_SIZE):
                 texts = [f"Title: {r['title']}\n\nAbstract: {r['abstract']}" for r in group]
                 embs = embed_texts(client, texts)
@@ -128,6 +165,9 @@ def main() -> None:
                         "UPDATE papers SET embedding = %s WHERE link = %s",
                         (e, r["link"]),
                     )
+                done += len(group)
+                pct = (done * 100.0) / max(1, total)
+                print(f"Embed progress: {done}/{total} ({pct:.1f}%)", flush=True)
 
     print("Embedding upsert complete.")
 
