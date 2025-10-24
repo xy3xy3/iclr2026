@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Dict, List
+from typing import Dict, List, Set
 
 import psycopg
 from pgvector.psycopg import register_vector
@@ -9,6 +9,8 @@ from openai import OpenAI
 
 DATA_PATH = os.getenv("DATA_PATH", os.path.join("data", "iclr2026.json"))
 MODEL = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")
+EMBED_ONLY_MISSING = os.getenv("EMBED_ONLY_MISSING", "1").lower() in ("1", "true", "yes", "y")
+EMBED_FORCE = os.getenv("EMBED_FORCE", "0").lower() in ("1", "true", "yes", "y")
 
 
 def dsn_from_env() -> str:
@@ -71,35 +73,60 @@ def main() -> None:
         register_vector(conn)
         ensure_schema(conn)
         with conn.cursor() as cur:
-            batch: List[Dict[str, str]] = []
+            # 1) Upsert title/abstract/link; collect which links need embeddings
+            #    If EMBED_FORCE=1 -> embed all; else if EMBED_ONLY_MISSING=1 -> embed only missing
+            #    else -> embed all
             BATCH_SIZE = int(os.getenv("EMBED_BATCH", "64"))
 
-            def flush_batch():
-                if not batch:
-                    return
-                texts = [f"Title: {r['title']}\n\nAbstract: {r['abstract']}" for r in batch]
-                embs = embed_texts(client, texts)
-                for r, e in zip(batch, embs):
-                    cur.execute(
-                        """
-                        INSERT INTO papers (title, abstract, link, embedding)
-                        VALUES (%s, %s, %s, %s)
-                        ON CONFLICT (link) DO UPDATE
-                          SET title = EXCLUDED.title,
-                              abstract = EXCLUDED.abstract,
-                              embedding = EXCLUDED.embedding
-                        """,
-                        (r["title"], r["abstract"], r.get("link", ""), e),
-                    )
-                batch.clear()
+            existing_with_emb: Set[str] = set()
+            if not EMBED_FORCE and EMBED_ONLY_MISSING:
+                cur.execute("SELECT link FROM papers WHERE embedding IS NOT NULL")
+                existing_with_emb = {row[0] for row in cur.fetchall()}
+
+            to_embed: List[Dict[str, str]] = []
 
             for r in records:
-                if not r.get("title") or not r.get("abstract"):
+                title = (r.get("title") or "").strip()
+                abstract = (r.get("abstract") or "").strip()
+                link = (r.get("link") or "").strip()
+                if not title or not abstract or not link:
                     continue
-                batch.append(r)
-                if len(batch) >= BATCH_SIZE:
-                    flush_batch()
-            flush_batch()
+                # Upsert metadata without touching embedding
+                cur.execute(
+                    """
+                    INSERT INTO papers (title, abstract, link)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (link) DO UPDATE
+                      SET title = EXCLUDED.title,
+                          abstract = EXCLUDED.abstract
+                    """,
+                    (title, abstract, link),
+                )
+
+                need = True
+                if EMBED_FORCE:
+                    need = True
+                elif EMBED_ONLY_MISSING:
+                    need = link not in existing_with_emb
+                else:
+                    need = True
+
+                if need:
+                    to_embed.append({"title": title, "abstract": abstract, "link": link})
+
+            # 2) Embed and update only the necessary rows
+            def chunks(lst, n):
+                for i in range(0, len(lst), n):
+                    yield lst[i : i + n]
+
+            for group in chunks(to_embed, BATCH_SIZE):
+                texts = [f"Title: {r['title']}\n\nAbstract: {r['abstract']}" for r in group]
+                embs = embed_texts(client, texts)
+                for r, e in zip(group, embs):
+                    cur.execute(
+                        "UPDATE papers SET embedding = %s WHERE link = %s",
+                        (e, r["link"]),
+                    )
 
     print("Embedding upsert complete.")
 

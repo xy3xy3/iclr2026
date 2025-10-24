@@ -81,38 +81,21 @@ uv run python ./scripts/init_db.py
 
 ## 远程部署（pgvector + uv）
 
-1) 准备环境变量
+1) 准备环境变量（.env）
 
 ```bash
 cp .env.example .env
 # 填写 OPENAI_API_KEY（必需），可选：OPENAI_BASE_URL/OPENAI_EMBED_MODEL/OPENAI_EMBED_DIM
 ```
 
-2) 构建并启动服务
+2) 构建并启动服务（首次会自动初始化数据库并向量化缺失数据，后续不会重复向量化）
 
 ```bash
 ./scripts/remote_up.sh
 # 暴露端口：DB 5432，Web 8000
 ```
 
-3) 初始化与向量化（在容器内执行，或在宿主机执行）
-
-- 方式 A（容器内执行，推荐）：
-
-  ```bash
-  docker compose -f compose.remote.yml exec uvapp bash   # 或 docker-compose ...
-  uv run python ./scripts/init_db.py
-  uv run python ./scripts/embed_papers.py
-  ```
-
-- 方式 B（宿主机执行，使用 `.env`）：
-
-  ```bash
-  ./scripts/with_env.sh uv run python ./scripts/init_db.py
-  ./scripts/with_env.sh uv run python ./scripts/embed_papers.py
-  ```
-
-4) 访问服务
+3) 访问服务
 
 ```bash
 http://<服务器IP或域名>:8000/gradio
@@ -121,3 +104,6 @@ http://<服务器IP或域名>:8000/gradio
 说明：
 - 本地 `compose.local.yml` 仅启动数据库，端口映射 `5433:5432`，避免与本机 Postgres 冲突。
 - 远程 `compose.remote.yml` 同时启动数据库与应用，并映射 `5432`（DB）与 `8000`（Web）。
+ - 远程应用容器启动时会执行 `scripts/bootstrap.sh`：
+   - `init_db.py`：幂等创建扩展/表/索引
+   - `embed_papers.py`：默认仅向量化缺失记录（`EMBED_ONLY_MISSING=1`），可通过 `EMBED_FORCE=1` 强制重算

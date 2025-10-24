@@ -47,8 +47,8 @@ services:
     depends_on:
       pgvector:
         condition: service_healthy
-    # Keep container running and provide uv inside
-    command: ["bash", "-lc", "./scripts/serve_app.sh"]
+    # Bootstrap (idempotent) then start the app
+    command: ["bash", "-lc", "./scripts/bootstrap.sh && ./scripts/serve_app.sh"]
     ports:
       - "8000:8000"  # for future FastAPI/Gradio if needed
     networks:
