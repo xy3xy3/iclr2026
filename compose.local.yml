@@ -1,0 +1,29 @@
+name: iclr2026-local
+
+services:
+  pgvector:
+    image: swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/pgvector/pgvector:pg18-bookworm
+    container_name: iclr2026_pgvector_local
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: iclr2026
+      POSTGRES_USER: iclr
+      POSTGRES_PASSWORD: iclrpass
+    ports:
+      - "5433:5432"  # host:container
+    volumes:
+      - pg_data_local:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - iclr_net
+
+volumes:
+  pg_data_local:
+
+networks:
+  iclr_net:
+    name: iclr2026_net
