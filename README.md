@@ -110,7 +110,9 @@ uv run python ./scripts/init_db.py
 
 - Gradio 界面新增“Search Mode”：`vector`（默认，向量语义检索）与 `keyword`（Postgres 全文检索，基于 title+abstract）。
 - REST API：`GET /search?q=...&limit=10&mode=vector|keyword`
-- MCP 工具：`paper_search(query, limit=10, mode="vector|keyword")`
+- MCP 工具：
+  - `paper_search(queries: List[str], limit=10, mode="vector|keyword")`（支持一次最多32个查询，limit 为单个查询上限，结果按查询分组返回）
+  - `paper_details(paper_ids: List[int])`（按 ID 批量获取论文详情）
 
 实现细节：
 - 向量检索使用 `pgvector` + 余弦相似度（`ivfflat` 索引）。

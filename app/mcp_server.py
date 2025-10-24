@@ -11,54 +11,68 @@ if str(ROOT) not in sys.path:
 
 # Reuse existing app logic and configuration
 from app.db import ensure_schema, get_conn
-from app.search import search_papers
+from app.search import search_papers, search_papers_multi
 
 
 mcp = FastMCP("ICLR2026 Vector Search 🧠")
 
 
 @mcp.tool
-def paper_search(query: str, limit: int = 10, mode: str = "vector", ctx: Context | None = None) -> List[Dict[str, Any]]:
+def paper_search(
+    queries: List[str],
+    limit: int = 10,
+    mode: str = "vector",
+    ctx: Context | None = None,
+) -> List[Dict[str, Any]]:
     """Search ICLR2026 papers with vector or keyword mode.
 
     Args:
-        query: Natural language query.
-        limit: Number of results to return (default 10).
+        queries: List of natural language queries (1-32 items).
+        limit: Per-query number of results to return (default 10).
         mode: "vector" (embedding similarity) or "keyword" (full-text search).
 
     Returns:
-        A list of results: id, title, abstract, link, score.
+        A list of groups, each item: {"query": str, "results": [ {id, title, abstract, link, score} ]}
     """
-    # Ensure DB is ready before serving the search call
     ensure_schema()
+    if not isinstance(queries, list) or len(queries) == 0:
+        return []
+    # Enforce max 32 queries for safety
+    queries = [q for q in (queries or []) if isinstance(q, str) and q.strip()][:32]
     if ctx:
-        # Small user-facing note in MCP clients
-        ctx.info(f"Searching papers ({mode}) for: {query}")
-    return search_papers(query, limit, mode)
+        ctx.info(f"Searching papers ({mode}) for {len(queries)} queries, limit={limit}")
+    return search_papers_multi(queries, limit, mode)
 
 
-@mcp.resource("paper://{paper_id}")
-def paper_resource(paper_id: int) -> Dict[str, Any]:
-    """Fetch a single paper's details by numeric id.
+@mcp.tool
+def paper_details(paper_ids: List[int]) -> List[Dict[str, Any]]:
+    """Fetch details for a list of paper IDs.
 
-    URI format: paper://{paper_id}
+    Args:
+        paper_ids: List of numeric IDs.
+
+    Returns:
+        List of paper dicts ordered to match the input IDs when found.
     """
     ensure_schema()
+    # Normalize and cap list size for safety
+    ids = [int(x) for x in (paper_ids or [])][:256]
+    if not ids:
+        return []
     with get_conn() as conn:
         with conn.cursor() as cur:
+            # Use = ANY(%s) so psycopg adapts Python list to SQL array
             cur.execute(
-                "SELECT id, title, abstract, link FROM papers WHERE id = %s",
-                (paper_id,),
+                "SELECT id, title, abstract, link FROM papers WHERE id = ANY(%s)",
+                (ids,),
             )
-            row = cur.fetchone()
-            if not row:
-                return {"error": f"paper id {paper_id} not found"}
-            return {
-                "id": row[0],
-                "title": row[1],
-                "abstract": row[2],
-                "link": row[3],
-            }
+            rows = cur.fetchall()
+    by_id: Dict[int, Dict[str, Any]] = {
+        int(r[0]): {"id": r[0], "title": r[1], "abstract": r[2], "link": r[3]}
+        for r in rows
+    }
+    # Preserve requested order; skip IDs not found
+    return [by_id[i] for i in ids if i in by_id]
 
 
 if __name__ == "__main__":
