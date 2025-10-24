@@ -1,17 +1,30 @@
 import json
 import os
 import socket
-from typing import Dict, List, Set
+import asyncio
+import random
+from typing import Dict, List, Set, Tuple
 
 import psycopg
 from pgvector.psycopg import register_vector
-from openai import OpenAI
+from openai import OpenAI, AsyncOpenAI
+try:
+    from openai import APIError, RateLimitError, APIConnectionError
+except Exception:  # fallback for older clients
+    APIError = Exception  # type: ignore
+    RateLimitError = Exception  # type: ignore
+    APIConnectionError = Exception  # type: ignore
 
 
 DATA_PATH = os.getenv("DATA_PATH", os.path.join("data", "iclr2026.json"))
 MODEL = os.getenv("OPENAI_EMBED_MODEL", "text-embedding-3-small")
 EMBED_ONLY_MISSING = os.getenv("EMBED_ONLY_MISSING", "1").lower() in ("1", "true", "yes", "y")
 EMBED_FORCE = os.getenv("EMBED_FORCE", "0").lower() in ("1", "true", "yes", "y")
+EMBED_BATCH = int(os.getenv("EMBED_BATCH", "64"))
+EMBED_CONCURRENCY = int(os.getenv("EMBED_CONCURRENCY", "1"))
+EMBED_MAX_RETRIES = int(os.getenv("EMBED_MAX_RETRIES", "5"))
+EMBED_BACKOFF_BASE = float(os.getenv("EMBED_BACKOFF_BASE", "1.5"))
+EMBED_TASK_DELAY_MS = int(os.getenv("EMBED_TASK_DELAY_MS", "0"))  # delay between starting tasks
 
 
 def dsn_from_env() -> str:
@@ -63,10 +76,26 @@ def make_client() -> OpenAI:
     return OpenAI(api_key=api_key)
 
 
+def make_async_client() -> AsyncOpenAI:
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY not set")
+    base_url = os.getenv("OPENAI_BASE_URL")
+    if base_url:
+        return AsyncOpenAI(api_key=api_key, base_url=base_url)
+    return AsyncOpenAI(api_key=api_key)
+
+
 def embed_texts(client: OpenAI, texts: List[str]) -> List[List[float]]:
     # OpenAI supports batching
     inputs = [t.replace("\n", " ") for t in texts]
     resp = client.embeddings.create(model=MODEL, input=inputs)
+    return [d.embedding for d in resp.data]  # type: ignore
+
+
+async def embed_texts_async(client: AsyncOpenAI, texts: List[str]) -> List[List[float]]:
+    inputs = [t.replace("\n", " ") for t in texts]
+    resp = await client.embeddings.create(model=MODEL, input=inputs)
     return [d.embedding for d in resp.data]  # type: ignore
 
 
@@ -105,7 +134,7 @@ def main() -> None:
             # 1) Upsert title/abstract/link; collect which links need embeddings
             #    If EMBED_FORCE=1 -> embed all; else if EMBED_ONLY_MISSING=1 -> embed only missing
             #    else -> embed all
-            BATCH_SIZE = int(os.getenv("EMBED_BATCH", "64"))
+            BATCH_SIZE = EMBED_BATCH
 
             existing_with_emb: Set[str] = set()
             if not EMBED_FORCE and EMBED_ONLY_MISSING:
@@ -156,18 +185,57 @@ def main() -> None:
                 for i in range(0, len(lst), n):
                     yield lst[i : i + n]
 
+            groups: List[List[Dict[str, str]]] = list(chunks(to_embed, BATCH_SIZE))
+
             done = 0
-            for group in chunks(to_embed, BATCH_SIZE):
-                texts = [f"Title: {r['title']}\n\nAbstract: {r['abstract']}" for r in group]
-                embs = embed_texts(client, texts)
-                for r, e in zip(group, embs):
-                    cur.execute(
-                        "UPDATE papers SET embedding = %s WHERE link = %s",
-                        (e, r["link"]),
-                    )
-                done += len(group)
-                pct = (done * 100.0) / max(1, total)
-                print(f"Embed progress: {done}/{total} ({pct:.1f}%)", flush=True)
+            if EMBED_CONCURRENCY <= 1:
+                # Synchronous path
+                for group in groups:
+                    texts = [f"Title: {r['title']}\n\nAbstract: {r['abstract']}" for r in group]
+                    embs = embed_texts(client, texts)
+                    for r, e in zip(group, embs):
+                        cur.execute("UPDATE papers SET embedding = %s WHERE link = %s", (e, r["link"]))
+                    done += len(group)
+                    pct = (done * 100.0) / max(1, total)
+                    print(f"Embed progress: {done}/{total} ({pct:.1f}%)", flush=True)
+            else:
+                # Concurrent async path
+                async_client = make_async_client()
+
+                async def worker(g: List[Dict[str, str]]) -> Tuple[List[Dict[str, str]], List[List[float]]]:
+                    attempt = 0
+                    while True:
+                        try:
+                            texts = [f"Title: {r['title']}\n\nAbstract: {r['abstract']}" for r in g]
+                            embs = await embed_texts_async(async_client, texts)
+                            return g, embs
+                        except (RateLimitError, APIError, APIConnectionError, Exception) as e:  # broad retry
+                            attempt += 1
+                            if attempt > EMBED_MAX_RETRIES:
+                                raise
+                            delay = (EMBED_BACKOFF_BASE ** attempt) + random.uniform(0, 0.5)
+                            await asyncio.sleep(delay)
+
+                async def run_all():
+                    sem = asyncio.Semaphore(EMBED_CONCURRENCY)
+
+                    async def guarded(g):
+                        async with sem:
+                            if EMBED_TASK_DELAY_MS > 0:
+                                await asyncio.sleep(EMBED_TASK_DELAY_MS / 1000.0)
+                            return await worker(g)
+
+                    tasks = [asyncio.create_task(guarded(g)) for g in groups]
+                    nonlocal done
+                    for task in asyncio.as_completed(tasks):
+                        g, embs = await task
+                        for r, e in zip(g, embs):
+                            cur.execute("UPDATE papers SET embedding = %s WHERE link = %s", (e, r["link"]))
+                        done += len(g)
+                        pct = (done * 100.0) / max(1, total)
+                        print(f"Embed progress: {done}/{total} ({pct:.1f}%)", flush=True)
+
+                asyncio.run(run_all())
 
     print("Embedding upsert complete.")
 

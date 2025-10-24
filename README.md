@@ -68,6 +68,12 @@ uv run python ./scripts/init_db.py
   ./scripts/with_env.sh uv run python ./scripts/embed_papers.py
   ```
 
+可选加速参数：
+- `EMBED_BATCH`（默认 64）：单次请求打包文本条数
+- `EMBED_CONCURRENCY`（默认 1）：并发请求批次数（建议 2~4，视限速而定）
+- `EMBED_MAX_RETRIES`、`EMBED_BACKOFF_BASE`：失败重试与退避
+- `EMBED_TASK_DELAY_MS`：并发任务启动之间的延迟（毫秒）
+
 5) 启动 API + Gradio（会读取 .env）
 
 ```bash
