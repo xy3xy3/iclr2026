@@ -2,11 +2,38 @@ from contextlib import contextmanager
 from typing import Iterator
 import os
 import socket
+import logging
+import re
+from urllib.parse import urlsplit, urlunsplit
 
 import psycopg
 from pgvector.psycopg import register_vector
 
 from .config import dsn_from_env, EMBED_DIM
+
+logger = logging.getLogger("app.db")
+
+
+def _mask_dsn(dsn: str) -> str:
+    """Mask password in DSN for safe logging.
+
+    Handles URL-style and key=value DSN formats.
+    """
+    try:
+        if "://" in dsn:
+            u = urlsplit(dsn)
+            user = u.username or ""
+            auth = user
+            if u.password is not None:
+                auth = f"{user}:****"
+            hostport = u.hostname or ""
+            if u.port:
+                hostport = f"{hostport}:{u.port}"
+            netloc = f"{auth}@{hostport}" if (auth or hostport) else u.netloc
+            return urlunsplit((u.scheme, netloc, u.path, u.query, u.fragment))
+        return re.sub(r"(?i)(password\s*=\s*)([^\s]+)", r"\1****", dsn)
+    except Exception:
+        return re.sub(r":([^:@/]+)@", ":****@", dsn)
 
 
 def _is_resolvable(host: str) -> bool:
@@ -37,6 +64,12 @@ def get_conn() -> psycopg.Connection:
     # Note: do not register pgvector here because the extension
     # may not exist yet; call register_vector after ensuring schema.
     dsn = dsn_from_env()
+    masked = _mask_dsn(dsn)
+    logger.info("Connecting to PostgreSQL: %s", masked)
+    try:
+        print(f"[db] Connecting to PostgreSQL: {masked}", flush=True)
+    except Exception:
+        pass
     try:
         return psycopg.connect(dsn, autocommit=True)
     except psycopg.OperationalError:
@@ -60,7 +93,12 @@ def get_conn() -> psycopg.Connection:
 
         if should_fallback:
             fallback = f"postgresql://{user}:{pw}@127.0.0.1:5432/{dbname}"
-            print(f"Warn: falling back to local DB {fallback}")
+            masked_fb = _mask_dsn(fallback)
+            logger.warning("Falling back to local DB %s", masked_fb)
+            try:
+                print(f"[db] Falling back to local DB {masked_fb}", flush=True)
+            except Exception:
+                pass
             return psycopg.connect(fallback, autocommit=True)
         raise
 
