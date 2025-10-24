@@ -92,11 +92,34 @@ def api_search(q: str = Query(..., min_length=1), limit: int = Query(10, ge=1, l
     return {"query": q, "results": results}
 
 
-def gradio_interface(query: str, top_k: int) -> List[List[Any]]:
+def gradio_interface(query: str, top_k: int):
     if not query.strip():
-        return []
+        return [], []
     rows = search_papers(query, top_k)
-    return [[r["score"], r["title"], r["link"], r["abstract"]] for r in rows]
+    table = [[r["score"], r["title"], r["link"], r["abstract"]] for r in rows]
+    return table, table
+
+
+def on_table_select(evt: gr.SelectData, rows: List[List[Any]]):
+    # evt.index is typically (row, col)
+    row_idx = 0
+    try:
+        idx = evt.index  # type: ignore[attr-defined]
+        if isinstance(idx, (list, tuple)) and len(idx) >= 1:
+            row_idx = int(idx[0])
+        elif isinstance(idx, int):
+            row_idx = idx
+    except Exception:
+        row_idx = 0
+
+    link = ""
+    try:
+        if isinstance(rows, list) and 0 <= row_idx < len(rows):
+            link = str(rows[row_idx][2])  # third column is link
+    except Exception:
+        link = ""
+
+    return gr.update(value=link), gr.update(link=link)
 
 
 with gr.Blocks(title="ICLR2026 Paper Search") as demo:
@@ -112,7 +135,16 @@ with gr.Blocks(title="ICLR2026 Paper Search") as demo:
         interactive=False,
         label="Results (score is similarity: higher is better)",
     )
-    btn.click(fn=gradio_interface, inputs=[q, k], outputs=out)
+    state_rows = gr.State([])
+    with gr.Row():
+        link_box = gr.Textbox(label="Link", interactive=False, show_copy_button=True)
+        open_btn = gr.Button("Open Link", variant="secondary")
+
+    # Search triggers table + state update
+    btn.click(fn=gradio_interface, inputs=[q, k], outputs=[out, state_rows])
+
+    # When selecting a row, update link textbox and the button's link (opens in new tab)
+    out.select(fn=on_table_select, inputs=state_rows, outputs=[link_box, open_btn])
 
 
 # Mount Gradio at /gradio
