@@ -91,8 +91,16 @@ with gr.Blocks(title="ICLR2026 Paper Search") as demo:
     # Search triggers table + state update
     btn.click(fn=gradio_interface, inputs=[q, k], outputs=[out, state_rows])
 
-    # When selecting a row, update link textbox and the button's link (opens in new tab)
-    out.select(fn=on_table_select, inputs=state_rows, outputs=[link_box, open_btn])
+    # When selecting a row, update link textbox only
+    out.select(fn=on_table_select, inputs=state_rows, outputs=[link_box])
+
+    # Open the link in a new tab/window on click using JS
+    open_btn.click(
+        fn=None,
+        inputs=link_box,
+        outputs=None,
+        _js="(link) => { if (link) window.open(link, '_blank', 'noopener'); }",
+    )
 
 
 # Mount Gradio at /gradio
