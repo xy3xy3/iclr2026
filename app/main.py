@@ -32,18 +32,22 @@ def health() -> Dict[str, str]:
 
 
 @app.get("/search")
-def api_search(q: str = Query(..., min_length=1), limit: int = Query(10, ge=1, le=50)) -> Dict[str, Any]:
+def api_search(
+    q: str = Query(..., min_length=1),
+    limit: int = Query(10, ge=1, le=50),
+    mode: str = Query("vector", description="vector or keyword"),
+) -> Dict[str, Any]:
     try:
-        results = search_papers(q, limit)
+        results = search_papers(q, limit, mode)
     except Exception as e:
         raise HTTPException(500, f"search failed: {e}")
-    return {"query": q, "results": results}
+    return {"query": q, "mode": mode, "results": results}
 
 
-def gradio_interface(query: str, top_k: int):
+def gradio_interface(query: str, top_k: int, mode: str):
     if not query.strip():
         return [], []
-    rows = search_papers(query, top_k)
+    rows = search_papers(query, top_k, mode)
     table = [[r["score"], r["title"], r["link"], r["abstract"]] for r in rows]
     return table, table
 
@@ -72,10 +76,15 @@ def on_table_select(evt: gr.SelectData, rows: List[List[Any]]):
 
 
 with gr.Blocks(title="ICLR2026 Paper Search") as demo:
-    gr.Markdown("# ICLR2026 Paper Semantic Search (pgvector)")
+    gr.Markdown("# ICLR2026 Paper Search — 向量/关键词")
     with gr.Row():
         q = gr.Textbox(label="Query", placeholder="e.g., emotion classification in software engineering")
         k = gr.Slider(minimum=1, maximum=50, step=1, value=10, label="Top K")
+        mode = gr.Radio(
+            choices=["vector", "keyword"],
+            value="vector",
+            label="Search Mode",
+        )
     btn = gr.Button("Search")
     out = gr.Dataframe(
         headers=["score", "title", "link", "abstract"],
@@ -90,7 +99,7 @@ with gr.Blocks(title="ICLR2026 Paper Search") as demo:
         open_btn = gr.Button("Open Link", variant="secondary")
 
     # Search triggers table + state update
-    btn.click(fn=gradio_interface, inputs=[q, k], outputs=[out, state_rows])
+    btn.click(fn=gradio_interface, inputs=[q, k, mode], outputs=[out, state_rows])
 
     # When selecting a row, update link textbox only
     out.select(fn=on_table_select, inputs=state_rows, outputs=[link_box])

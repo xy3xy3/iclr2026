@@ -70,6 +70,22 @@ def main() -> None:
                 END$$;
                 """
             )
+            cur.execute(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_class c
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE c.relname = 'papers_fts_idx' AND n.nspname = 'public'
+                    ) THEN
+                        EXECUTE $$CREATE INDEX papers_fts_idx ON papers USING GIN (
+                            to_tsvector('english', coalesce(title,'') || ' ' || coalesce(abstract,''))
+                        )$$;
+                    END IF;
+                END$$;
+                """
+            )
         # Register type adapters after ensuring extension exists
         register_vector(conn)
     print("DB schema ensured (extension/table/index)")

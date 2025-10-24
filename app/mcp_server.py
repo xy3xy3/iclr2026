@@ -18,22 +18,23 @@ mcp = FastMCP("ICLR2026 Vector Search 🧠")
 
 
 @mcp.tool
-def paper_search(query: str, limit: int = 10, ctx: Context | None = None) -> List[Dict[str, Any]]:
-    """Semantic search over the ICLR2026 papers stored in Postgres/pgvector.
+def paper_search(query: str, limit: int = 10, mode: str = "vector", ctx: Context | None = None) -> List[Dict[str, Any]]:
+    """Search ICLR2026 papers with vector or keyword mode.
 
     Args:
         query: Natural language query.
         limit: Number of results to return (default 10).
+        mode: "vector" (embedding similarity) or "keyword" (full-text search).
 
     Returns:
-        A list of search results with id, title, abstract, link, and similarity score.
+        A list of results: id, title, abstract, link, score.
     """
     # Ensure DB is ready before serving the search call
     ensure_schema()
     if ctx:
         # Small user-facing note in MCP clients
-        ctx.info(f"Searching papers for: {query}")
-    return search_papers(query, limit)
+        ctx.info(f"Searching papers ({mode}) for: {query}")
+    return search_papers(query, limit, mode)
 
 
 @mcp.resource("paper://{paper_id}")

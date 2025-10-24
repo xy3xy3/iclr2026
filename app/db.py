@@ -104,3 +104,20 @@ def ensure_schema() -> None:
                 END$$;
                 """
             )
+            # Create FTS GIN index over title+abstract for keyword search
+            cur.execute(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM pg_class c
+                        JOIN pg_namespace n ON n.oid = c.relnamespace
+                        WHERE c.relname = 'papers_fts_idx' AND n.nspname = 'public'
+                    ) THEN
+                        EXECUTE $$CREATE INDEX papers_fts_idx ON papers USING GIN (
+                            to_tsvector('english', coalesce(title,'') || ' ' || coalesce(abstract,''))
+                        )$$;
+                    END IF;
+                END$$;
+                """
+            )

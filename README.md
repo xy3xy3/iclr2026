@@ -106,6 +106,16 @@ uv run python ./scripts/init_db.py
 
 提示：若提示 `docker: unknown command: docker compose`，请安装 Compose v2 插件或使用 `docker-compose`（启动脚本已自动兼容）。
 
+## 检索模式（向量/关键词）
+
+- Gradio 界面新增“Search Mode”：`vector`（默认，向量语义检索）与 `keyword`（Postgres 全文检索，基于 title+abstract）。
+- REST API：`GET /search?q=...&limit=10&mode=vector|keyword`
+- MCP 工具：`paper_search(query, limit=10, mode="vector|keyword")`
+
+实现细节：
+- 向量检索使用 `pgvector` + 余弦相似度（`ivfflat` 索引）。
+- 关键词检索使用 Postgres FTS（`to_tsvector('english', title||' '||abstract)` + `websearch_to_tsquery`），并创建了 GIN 索引 `papers_fts_idx`。
+
 ## 远程部署（pgvector + uv）
 
 1) 准备环境变量（.env）
