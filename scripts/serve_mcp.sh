@@ -16,12 +16,9 @@ fi
 export PYTHONUNBUFFERED=1
 
 # Wait for DB if configured to use docker compose pgvector service
+# In Compose, the service name 'pgvector' resolves on the network.
 DB_HOST=${POSTGRES_HOST:-127.0.0.1}
 DB_PORT=${POSTGRES_PORT:-5432}
-if [ "$DB_HOST" = "pgvector" ]; then
-  DB_HOST=127.0.0.1
-  DB_PORT=5432
-fi
 
 echo "[mcp] Waiting for DB at $DB_HOST:$DB_PORT ..."
 for i in $(seq 1 60); do
@@ -35,4 +32,3 @@ done
 
 echo "Starting FastMCP server (HTTP transport) on :8765/mcp ..."
 exec uv run fastmcp run app/mcp_server.py --transport http --host 0.0.0.0 --port 8765 --path /mcp
-

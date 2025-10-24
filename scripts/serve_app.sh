@@ -16,13 +16,10 @@ fi
 export PYTHONUNBUFFERED=1
 
 # Wait for DB to be reachable to avoid startup race
+# In Docker Compose, POSTGRES_HOST=pgvector resolves via the network.
+# Do not rewrite to 127.0.0.1 inside containers.
 DB_HOST=${POSTGRES_HOST:-127.0.0.1}
 DB_PORT=${POSTGRES_PORT:-5432}
-if [ "$DB_HOST" = "pgvector" ]; then
-  # local fallback when not in compose network
-  DB_HOST=127.0.0.1
-  DB_PORT=5432
-fi
 
 echo "[serve] Waiting for DB at $DB_HOST:$DB_PORT ..."
 for i in $(seq 1 60); do

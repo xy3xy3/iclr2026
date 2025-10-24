@@ -97,12 +97,9 @@ def connect_with_fallback() -> psycopg.Connection:
 
         # Fallback rules aligned with app/db.py:
         # 1) host not resolvable -> 127.0.0.1:5432
-        # 2) host == 'pgvector' -> 127.0.0.1:5432
-        # 3) host resolves to loopback and port != 5432 -> 127.0.0.1:5432
+        # 2) host resolves to loopback and port != 5432 -> 127.0.0.1:5432
         should_fallback = False
         if host and not _is_resolvable(host):
-            should_fallback = True
-        if host.lower() == "pgvector":
             should_fallback = True
         if _resolves_to_loopback(host or "127.0.0.1") and port not in ("", "5432"):
             should_fallback = True
